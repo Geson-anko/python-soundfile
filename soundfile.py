@@ -12,17 +12,29 @@ __version__ = "0.13.1"
 
 import os as _os
 import sys as _sys
+import numpy.typing as npt
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 from ctypes.util import find_library as _find_library
+from typing import Any, BinaryIO, Dict, Final, Generator, Iterator, List, Literal, Optional, Tuple, Union
+from typing_extensions import TypeAlias, Self
 from _soundfile import ffi as _ffi
 
-try:
-    _unicode = unicode  # doesn't exist in Python 3.x
-except NameError:
-    _unicode = str
+# Type aliases for specific types
+StrType: TypeAlias = Literal['title', 'copyright', 'software', 'artist', 'comment', 'date', 'album', 'license', 'tracknumber', 'genre']
+Format: TypeAlias = Literal['WAV', 'AIFF', 'AU', 'RAW', 'PAF', 'SVX', 'NIST', 'VOC', 'IRCAM', 'W64', 'MAT4', 'MAT5', 'PVF', 'XI', 'HTK', 'SDS', 'AVR', 'WAVEX', 'SD2', 'FLAC', 'CAF', 'WVE', 'OGG', 'MPC2K', 'RF64', 'MP3']
+SubType: TypeAlias = Literal['PCM_S8', 'PCM_16', 'PCM_24', 'PCM_32', 'PCM_U8', 'FLOAT', 'DOUBLE', 'ULAW', 'ALAW', 'IMA_ADPCM', 'MS_ADPCM', 'GSM610', 'VOX_ADPCM', 'NMS_ADPCM_16', 'NMS_ADPCM_24', 'NMS_ADPCM_32', 'G721_32', 'G723_24', 'G723_40', 'DWVW_12', 'DWVW_16', 'DWVW_24', 'DWVW_N', 'DPCM_8', 'DPCM_16', 'VORBIS', 'OPUS', 'ALAC_16', 'ALAC_20', 'ALAC_24', 'ALAC_32', 'MPEG_LAYER_I', 'MPEG_LAYER_II', 'MPEG_LAYER_III']
+Endian: TypeAlias = Literal['FILE', 'LITTLE', 'BIG', 'CPU']
+FFIType: TypeAlias = Literal['float64', 'float32', 'int32', 'int16']
+BitrateMode: TypeAlias = Literal['CONSTANT', 'AVERAGE', 'VARIABLE']
+OpenMode: TypeAlias = Literal['r', 'r+', 'w', 'w+', 'x', 'x+']
+FileDescriptorOrPath: TypeAlias = Union[str, int, BinaryIO, _os.PathLike[Any]]
+NumpyArray: TypeAlias = npt.NDArray[Any]
+AudioData: TypeAlias = NumpyArray
+Frames: TypeAlias = int
+_snd: Any
+_ffi: Any
 
-
-_str_types = {
+_str_types: Final[Dict[StrType, int]] = {
     'title':       0x01,
     'copyright':   0x02,
     'software':    0x03,
@@ -35,7 +47,7 @@ _str_types = {
     'genre':       0x10,
 }
 
-_formats = {
+_formats: Final[Dict[Format, int]] = {
     'WAV':   0x010000,  # Microsoft WAV format (little endian default).
     'AIFF':  0x020000,  # Apple/SGI AIFF format (big endian).
     'AU':    0x030000,  # Sun/NeXT AU format (big endian).
@@ -64,7 +76,7 @@ _formats = {
     'MP3':   0x230000,  # MPEG-1/2 audio stream
 }
 
-_subtypes = {
+_subtypes: Final[Dict[SubType, int]] = {
     'PCM_S8':         0x0001,  # Signed 8 bit data
     'PCM_16':         0x0002,  # Signed 16 bit data
     'PCM_24':         0x0003,  # Signed 24 bit data
@@ -101,7 +113,7 @@ _subtypes = {
     'MPEG_LAYER_III': 0x0082,  # MPEG-2 Audio Layer III.
 }
 
-_endians = {
+_endians: Final[Dict[Endian, int]] = {
     'FILE':   0x00000000,  # Default file endian-ness.
     'LITTLE': 0x10000000,  # Force little endian-ness.
     'BIG':    0x20000000,  # Force big endian-ness.
@@ -109,7 +121,7 @@ _endians = {
 }
 
 # libsndfile doesn't specify default subtypes, these are somehow arbitrary:
-_default_subtypes = {
+_default_subtypes: Final[Dict[Format, SubType]] = {
     'WAV':   'PCM_16',
     'AIFF':  'PCM_16',
     'AU':    'PCM_16',
@@ -138,14 +150,14 @@ _default_subtypes = {
     'MP3':   'MPEG_LAYER_III',
 }
 
-_ffi_types = {
+_ffi_types: Final[Dict[FFIType, str]] = {
     'float64': 'double',
     'float32': 'float',
     'int32': 'int',
     'int16': 'short'
 }
 
-_bitrate_modes = {
+_bitrate_modes: Final[Dict[BitrateMode, int]] = {
     'CONSTANT': 0,
     'AVERAGE': 1,
     'VARIABLE': 2,
@@ -216,9 +228,13 @@ if __libsndfile_version__.startswith('libsndfile-'):
     __libsndfile_version__ = __libsndfile_version__[len('libsndfile-'):]
 
 
-def read(file, frames=-1, start=0, stop=None, dtype='float64', always_2d=False,
-         fill_value=None, out=None, samplerate=None, channels=None,
-         format=None, subtype=None, endian=None, closefd=True):
+def read(file: FileDescriptorOrPath, frames: int = -1, start: int = 0, stop: Optional[int] = None, 
+         dtype: FFIType = 'float64', always_2d: bool = False,
+         fill_value: Optional[float] = None, out: Optional[NumpyArray] = None, 
+         samplerate: Optional[int] = None, channels: Optional[int] = None,
+         format: Optional[Format] = None, subtype: Optional[SubType] = None, 
+         endian: Optional[Endian] = None, closefd: bool = True) -> Tuple[NumpyArray, int]:
+
     """Provide audio data from a sound file as NumPy array.
 
     By default, the whole file is read from the beginning, but the
@@ -304,13 +320,16 @@ def read(file, frames=-1, start=0, stop=None, dtype='float64', always_2d=False,
     """
     with SoundFile(file, 'r', samplerate, channels,
                    subtype, endian, format, closefd) as f:
-        frames = f._prepare_read(start, stop, frames)
+        frames = f._prepare_read(start, stop, frames) # pyright: ignore[reportPrivateUsage]
         data = f.read(frames, dtype, always_2d, fill_value, out)
     return data, f.samplerate
 
 
-def write(file, data, samplerate, subtype=None, endian=None, format=None,
-          closefd=True, compression_level=None, bitrate_mode=None):
+def write(file: FileDescriptorOrPath, data: AudioData, samplerate: int, 
+          subtype: Optional[SubType] = None, endian: Optional[Endian] = None, 
+          format: Optional[Format] = None, closefd: bool = True, 
+          compression_level: Optional[float] = None, 
+          bitrate_mode: Optional[BitrateMode] = None) -> None: 
     """Write data to a sound file.
 
     .. note:: If *file* exists, it will be truncated and overwritten!
@@ -366,10 +385,14 @@ def write(file, data, samplerate, subtype=None, endian=None, format=None,
         f.write(data)
 
 
-def blocks(file, blocksize=None, overlap=0, frames=-1, start=0, stop=None,
-           dtype='float64', always_2d=False, fill_value=None, out=None,
-           samplerate=None, channels=None,
-           format=None, subtype=None, endian=None, closefd=True):
+def blocks(file: FileDescriptorOrPath, blocksize: Optional[int] = None, 
+           overlap: int = 0, frames: int = -1, start: int = 0, 
+           stop: Optional[int] = None, dtype: FFIType = 'float64', 
+           always_2d: bool = False, fill_value: Optional[float] = None, 
+           out: Optional[NumpyArray] = None, samplerate: Optional[int] = None, 
+           channels: Optional[int] = None, format: Optional[Format] = None, 
+           subtype: Optional[SubType] = None, endian: Optional[Endian] = None, 
+           closefd: bool = True) -> Generator[NumpyArray, None, None]:
     """Return a generator for block-wise reading.
 
     By default, iteration starts at the beginning and stops at the end
@@ -419,16 +442,16 @@ def blocks(file, blocksize=None, overlap=0, frames=-1, start=0, stop=None,
     """
     with SoundFile(file, 'r', samplerate, channels,
                    subtype, endian, format, closefd) as f:
-        frames = f._prepare_read(start, stop, frames)
+        frames = f._prepare_read(start, stop, frames) # pyright: ignore[reportPrivateUsage]
         for block in f.blocks(blocksize, overlap, frames,
                               dtype, always_2d, fill_value, out):
             yield block
 
 
-class _SoundFileInfo(object):
+class _SoundFileInfo:
     """Information about a SoundFile"""
 
-    def __init__(self, file, verbose):
+    def __init__(self, file: FileDescriptorOrPath, verbose: bool) -> None:
         self.verbose = verbose
         with SoundFile(file) as f:
             self.name = f.name
@@ -445,7 +468,7 @@ class _SoundFileInfo(object):
             self.extra_info = f.extra_info
 
     @property
-    def _duration_str(self):
+    def _duration_str(self) -> str:
         hours, rest = divmod(self.duration, 3600)
         minutes, seconds = divmod(rest, 60)
         if hours >= 1:
@@ -458,7 +481,7 @@ class _SoundFileInfo(object):
             duration = "{0:.3f} s".format(seconds)
         return duration
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         info = "\n".join(
             ["{0.name}",
              "samplerate: {0.samplerate} Hz",
@@ -477,7 +500,7 @@ class _SoundFileInfo(object):
         return info.format(self, indented_extra_info)
 
 
-def info(file, verbose=False):
+def info(file: FileDescriptorOrPath, verbose: bool = False) -> _SoundFileInfo:
     """Returns an object with information about a `SoundFile`.
 
     Parameters
@@ -488,7 +511,7 @@ def info(file, verbose=False):
     return _SoundFileInfo(file, verbose)
 
 
-def available_formats():
+def available_formats() -> Dict[str, str]:
     """Return a dictionary of available major formats.
 
     Examples
@@ -509,12 +532,12 @@ def available_formats():
                                           _snd.SFC_GET_FORMAT_MAJOR))
 
 
-def available_subtypes(format=None):
+def available_subtypes(format: Optional[Union[str, Format]] = None) -> Dict[str, str]:
     """Return a dictionary of available subtypes.
 
     Parameters
     ----------
-    format : str
+    format : Optional[Format]
         If given, only compatible subtypes are returned.
 
     Examples
@@ -532,7 +555,8 @@ def available_subtypes(format=None):
                 if format is None or check_format(format, subtype))
 
 
-def check_format(format, subtype=None, endian=None):
+def check_format(format: Union[Format, str], subtype: Optional[Union[SubType, str]] = None, 
+                 endian: Optional[Endian] = None) -> bool:
     """Check if the combination of format/subtype/endian is valid.
 
     Examples
@@ -544,13 +568,17 @@ def check_format(format, subtype=None, endian=None):
     False
 
     """
-    try:
-        return bool(_format_int(format, subtype, endian))
-    except (ValueError, TypeError):
-        return False
+    format = format.upper()
+    if subtype:
+        subtype = subtype.upper()
+    if format in _formats and subtype in _subtypes:
+        try:
+            return bool(_format_int(format, subtype, endian))
+        except (ValueError, TypeError):
+            return False
+    return False
 
-
-def default_subtype(format):
+def default_subtype(format: Union[str, Format]) -> Optional[SubType]:
     """Return the default subtype for a given format.
 
     Examples
@@ -562,11 +590,13 @@ def default_subtype(format):
     'DOUBLE'
 
     """
-    _check_format(format)
-    return _default_subtypes.get(format.upper())
+    format = format.upper()
+    if format in _formats:
+        return _default_subtypes.get(format)
+    raise ValueError(f"Unknown format: {format!r}")
 
 
-class SoundFile(object):
+class SoundFile:
     """A sound file.
 
     For more documentation see the __init__() docstring (which is also
@@ -574,9 +604,12 @@ class SoundFile(object):
 
     """
 
-    def __init__(self, file, mode='r', samplerate=None, channels=None,
-                 subtype=None, endian=None, format=None, closefd=True,
-                 compression_level=None, bitrate_mode=None):
+    def __init__(self, file: FileDescriptorOrPath, mode: OpenMode = 'r', 
+                 samplerate: Optional[int] = None, channels: Optional[int] = None,
+                 subtype: Optional[SubType] = None, endian: Optional[Endian] = None, 
+                 format: Optional[Format] = None, closefd: bool = True,
+                 compression_level: Optional[float] = None, 
+                 bitrate_mode: Optional[BitrateMode] = None) -> None:
         """Open a sound file.
 
         If a file is opened with `mode` ``'r'`` (the default) or
@@ -677,10 +710,8 @@ class SoundFile(object):
         """
         # resolve PathLike objects (see PEP519 for details):
         # can be replaced with _os.fspath(file) for Python >= 3.6
-        file = file.__fspath__() if hasattr(file, '__fspath__') else file
+        file = _os.fspath(file) if isinstance(file, _os.PathLike) else file
         self._name = file
-        if mode is None:
-            mode = getattr(file, 'mode', None)
         mode_int = _check_mode(mode)
         self._mode = mode
         self._compression_level = compression_level
@@ -740,7 +771,7 @@ class SoundFile(object):
     """The bitrate mode on 'write()'"""
 
     @property
-    def extra_info(self):
+    def extra_info(self) -> str:
         """Retrieve the log string generated when opening the file."""
         info = _ffi.new("char[]", 2**14)
         _snd.sf_command(self._file, _snd.SFC_GET_LOG_INFO,
@@ -750,7 +781,7 @@ class SoundFile(object):
     # avoid confusion if something goes wrong before assigning self._file:
     _file = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         compression_setting = (", compression_level={0}".format(self.compression_level) 
                                if self.compression_level is not None else "")
         compression_setting += (", bitrate_mode='{0}'".format(self.bitrate_mode) 
@@ -760,16 +791,16 @@ class SoundFile(object):
                 "format={0.format!r}, subtype={0.subtype!r}, "
                 "endian={0.endian!r}{1})".format(self, compression_setting))
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.close()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: Any) -> None:
         self.close()
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> None:
         """Write text meta-data in the sound file through properties."""
         if name in _str_types:
             self._check_if_closed()
@@ -779,7 +810,7 @@ class SoundFile(object):
         else:
             object.__setattr__(self, name, value)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Read text meta-data in the sound file through properties."""
         if name in _str_types:
             self._check_if_closed()
@@ -789,26 +820,26 @@ class SoundFile(object):
             raise AttributeError(
                 "'SoundFile' object has no attribute {0!r}".format(name))
 
-    def __len__(self):
+    def __len__(self) -> int:
         # Note: This is deprecated and will be removed at some point,
         # see https://github.com/bastibe/python-soundfile/issues/199
         return self._info.frames
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         # Note: This is temporary until __len__ is removed, afterwards it
         # can (and should) be removed without change of behavior
         return True
 
-    def __nonzero__(self):
+    def __nonzero__(self) -> bool:
         # Note: This is only for compatibility with Python 2 and it shall be
         # removed at the same time as __bool__().
         return self.__bool__()
 
-    def seekable(self):
+    def seekable(self) -> bool:
         """Return True if the file supports seeking."""
         return self._info.seekable == _snd.SF_TRUE
 
-    def seek(self, frames, whence=SEEK_SET):
+    def seek(self, frames: int, whence: int = SEEK_SET) -> int:
         """Set the read/write position.
 
         Parameters
@@ -849,12 +880,13 @@ class SoundFile(object):
         _error_check(self._errorcode)
         return position
 
-    def tell(self):
+    def tell(self) -> int:
         """Return the current read/write position."""
         return self.seek(0, SEEK_CUR)
 
-    def read(self, frames=-1, dtype='float64', always_2d=False,
-             fill_value=None, out=None):
+    def read(self, frames: int = -1, dtype: FFIType = 'float64', 
+             always_2d: bool = False, fill_value: Optional[float] = None, 
+             out: Optional[NumpyArray] = None) -> NumpyArray:
         """Read from the file and return data as NumPy array.
 
         Reads the given number of frames in the given data format
@@ -947,7 +979,7 @@ class SoundFile(object):
                 out[frames:] = fill_value
         return out
 
-    def buffer_read(self, frames=-1, dtype=None):
+    def buffer_read(self, frames: int = -1, dtype: Optional[FFIType] = None) -> Any:
         """Read from the file and return data as buffer object.
 
         Reads the given number of *frames* in the given data format
@@ -982,7 +1014,7 @@ class SoundFile(object):
         assert read_frames == frames
         return _ffi.buffer(cdata)
 
-    def buffer_read_into(self, buffer, dtype):
+    def buffer_read_into(self, buffer: Any, dtype: FFIType) -> int:
         """Read from the file into a given buffer object.
 
         Fills the given *buffer* with frames in the given data format
@@ -1015,7 +1047,7 @@ class SoundFile(object):
         frames = self._cdata_io('read', cdata, ctype, frames)
         return frames
 
-    def write(self, data):
+    def write(self, data: AudioData) -> None:
         """Write audio data from a NumPy array to the file.
 
         Writes a number of frames at the read/write position to the
@@ -1069,7 +1101,7 @@ class SoundFile(object):
         assert written == len(data)
         self._update_frames(written)
 
-    def buffer_write(self, data, dtype):
+    def buffer_write(self, data: Any, dtype: FFIType) -> None:
         """Write audio data from a buffer/bytes object to the file.
 
         Writes the contents of *data* to the file at the current
@@ -1096,8 +1128,10 @@ class SoundFile(object):
         assert written == frames
         self._update_frames(written)
 
-    def blocks(self, blocksize=None, overlap=0, frames=-1, dtype='float64',
-               always_2d=False, fill_value=None, out=None):
+    def blocks(self, blocksize: Optional[int] = None, overlap: int = 0, 
+               frames: int = -1, dtype: FFIType = 'float64',
+               always_2d: bool = False, fill_value: Optional[float] = None, 
+               out: Optional[NumpyArray] = None) -> Generator[NumpyArray, None, None]:
         """Return a generator for block-wise reading.
 
         By default, the generator yields blocks of the given
@@ -1189,7 +1223,7 @@ class SoundFile(object):
             yield np.copy(block) if copy_out else block
             frames -= toread
 
-    def truncate(self, frames=None):
+    def truncate(self, frames: Optional[int] = None) -> None:
         """Truncate the file to a given number of frames.
 
         After this command, the read/write position will be at the new
@@ -1213,7 +1247,7 @@ class SoundFile(object):
             raise LibsndfileError(err, "Error truncating the file")
         self._info.frames = frames
 
-    def flush(self):
+    def flush(self) -> None:
         """Write unwritten data to the file system.
 
         Data written with `write()` is not immediately written to
@@ -1227,7 +1261,7 @@ class SoundFile(object):
         self._check_if_closed()
         _snd.sf_write_sync(self._file)
 
-    def close(self):
+    def close(self) -> None:
         """Close the file.  Can be called multiple times."""
         if not self.closed:
             # be sure to flush data to disk before closing the file
@@ -1236,9 +1270,9 @@ class SoundFile(object):
             self._file = None
             _error_check(err)
 
-    def _open(self, file, mode_int, closefd):
+    def _open(self, file: FileDescriptorOrPath, mode_int: int, closefd: bool) -> Any:
         """Call the appropriate sf_open*() function from libsndfile."""
-        if isinstance(file, (_unicode, bytes)):
+        if isinstance(file, Union[str, bytes, _os.PathLike]):
             if _os.path.isfile(file):
                 if 'x' in self.mode:
                     raise OSError("File exists: {0!r}".format(self.name))
@@ -1246,11 +1280,10 @@ class SoundFile(object):
                     # truncate the file, because SFM_RDWR doesn't:
                     _os.close(_os.open(file, _os.O_WRONLY | _os.O_TRUNC))
             openfunction = _snd.sf_open
-            if isinstance(file, _unicode):
-                if _sys.platform == 'win32':
-                    openfunction = _snd.sf_wchar_open
-                else:
-                    file = file.encode(_sys.getfilesystemencoding())
+            if _sys.platform == 'win32':
+                openfunction = _snd.sf_wchar_open
+            if isinstance(file, str) and _sys.platform != 'win32':
+                file = file.encode(_sys.getfilesystemencoding()) # type: ignore
             file_ptr = openfunction(file, mode_int, self._info)
         elif isinstance(file, int):
             file_ptr = _snd.sf_open_fd(file, mode_int, self._info, closefd)
@@ -1272,10 +1305,10 @@ class SoundFile(object):
             # frames == 0 in this case), but it doesn't hurt, either.
         return file_ptr
 
-    def _init_virtual_io(self, file):
+    def _init_virtual_io(self, file: Any) -> Any:
         """Initialize callback functions for sf_open_virtual()."""
         @_ffi.callback("sf_vio_get_filelen")
-        def vio_get_filelen(user_data):
+        def vio_get_filelen(user_data: Any) -> int:
             curr = file.tell()
             file.seek(0, SEEK_END)
             size = file.tell()
@@ -1283,12 +1316,12 @@ class SoundFile(object):
             return size
 
         @_ffi.callback("sf_vio_seek")
-        def vio_seek(offset, whence, user_data):
+        def vio_seek(offset: int, whence: int, user_data: Any) -> int:
             file.seek(offset, whence)
             return file.tell()
 
         @_ffi.callback("sf_vio_read")
-        def vio_read(ptr, count, user_data):
+        def vio_read(ptr: Any, count: int, user_data: Any) -> int:
             # first try readinto(), if not available fall back to read()
             try:
                 buf = _ffi.buffer(ptr, count)
@@ -1301,7 +1334,7 @@ class SoundFile(object):
             return data_read
 
         @_ffi.callback("sf_vio_write")
-        def vio_write(ptr, count, user_data):
+        def vio_write(ptr: Any, count: int, user_data: Any) -> int:
             buf = _ffi.buffer(ptr, count)
             data = buf[:]
             written = file.write(data)
@@ -1311,7 +1344,7 @@ class SoundFile(object):
             return written
 
         @_ffi.callback("sf_vio_tell")
-        def vio_tell(user_data):
+        def vio_tell(user_data: Any) -> int:
             return file.tell()
 
         # Note: the callback functions must be kept alive!
@@ -1323,15 +1356,15 @@ class SoundFile(object):
 
         return _ffi.new("SF_VIRTUAL_IO*", self._virtual_io)
 
-    def _getAttributeNames(self):
+    def _getAttributeNames(self) -> List[str]:
         """Return all attributes used in __setattr__ and __getattr__.
 
         This is useful for auto-completion (e.g. IPython).
 
         """
-        return _str_types
+        return list(_str_types.keys())
 
-    def _check_if_closed(self):
+    def _check_if_closed(self) -> None:
         """Check if the file is closed and raise an error if it is.
 
         This should be used in every method that uses self._file.
@@ -1340,7 +1373,7 @@ class SoundFile(object):
         if self.closed:
             raise SoundFileRuntimeError("I/O operation on closed file")
 
-    def _check_frames(self, frames, fill_value):
+    def _check_frames(self, frames: int, fill_value: Optional[float]) -> int:
         """Reduce frames to no more than are available in the file."""
         if self.seekable():
             remaining_frames = self.frames - self.tell()
@@ -1351,7 +1384,7 @@ class SoundFile(object):
             raise ValueError("frames must be specified for non-seekable files")
         return frames
 
-    def _check_buffer(self, data, ctype):
+    def _check_buffer(self, data: Any, ctype: str) -> Tuple[Any, int]:
         """Convert buffer to cdata and check for valid size."""
         assert ctype in _ffi_types.values()
         if not isinstance(data, bytes):
@@ -1362,7 +1395,7 @@ class SoundFile(object):
             raise ValueError("Data size must be a multiple of frame size")
         return data, frames
 
-    def _create_empty_array(self, frames, always_2d, dtype):
+    def _create_empty_array(self, frames: int, always_2d: bool, dtype: FFIType) -> NumpyArray:
         """Create an empty array with appropriate shape."""
         import numpy as np
         if always_2d or self.channels > 1:
@@ -1371,15 +1404,15 @@ class SoundFile(object):
             shape = frames,
         return np.empty(shape, dtype, order='C')
 
-    def _check_dtype(self, dtype):
+    def _check_dtype(self, dtype: Optional[Union[FFIType, str]]) -> str:
         """Check if dtype string is valid and return ctype string."""
-        try:
+        if dtype is not None and dtype in _ffi_types:
             return _ffi_types[dtype]
-        except KeyError:
+        else:
             raise ValueError("dtype must be one of {0!r} and not {1!r}".format(
                 sorted(_ffi_types.keys()), dtype))
 
-    def _array_io(self, action, array, frames):
+    def _array_io(self, action: str, array: NumpyArray, frames: int) -> int:
         """Check array and call low-level IO function."""
         if array.ndim not in (1,2):
             raise ValueError("Invalid shape: {0!r} ({1})".format(array.shape, "0 dimensions not supported" if array.ndim < 1 else "too many dimensions"))
@@ -1393,10 +1426,11 @@ class SoundFile(object):
         cdata = _ffi.cast(ctype + '*', array.__array_interface__['data'][0])
         return self._cdata_io(action, cdata, ctype, frames)
 
-    def _cdata_io(self, action, data, ctype, frames):
+    def _cdata_io(self, action: str, data: Any, ctype: str, frames: int) -> int:
         """Call one of libsndfile's read/write functions."""
         assert ctype in _ffi_types.values()
         self._check_if_closed()
+        curr = 0
         if self.seekable():
             curr = self.tell()
         func = getattr(_snd, 'sf_' + action + 'f_' + ctype)
@@ -1406,7 +1440,7 @@ class SoundFile(object):
             self.seek(curr + frames, SEEK_SET)  # Update read & write position
         return frames
 
-    def _update_frames(self, written):
+    def _update_frames(self, written: int) -> None:
         """Update self.frames after writing."""
         if self.seekable():
             curr = self.tell()
@@ -1415,7 +1449,7 @@ class SoundFile(object):
         else:
             self._info.frames += written
 
-    def _prepare_read(self, start, stop, frames):
+    def _prepare_read(self, start: int, stop: Optional[int], frames: int) -> int:
         """Seek to start frame and calculate length."""
         if start != 0 and not self.seekable():
             raise ValueError("start is only allowed for seekable files")
@@ -1431,7 +1465,7 @@ class SoundFile(object):
             self.seek(start, SEEK_SET)
         return frames
 
-    def copy_metadata(self):
+    def copy_metadata(self) -> Dict[str, str]:
         """Get all metadata present in this SoundFile
 
         Returns
@@ -1442,14 +1476,14 @@ class SoundFile(object):
             'software', 'artist', 'comment', 'date', 'album', 'license',
             'tracknumber' and 'genre'.
         """
-        strs = {}
+        strs: Dict[str, str] = {}
         for strtype, strid in _str_types.items():
             data = _snd.sf_get_string(self._file, strid)
             if data:
                 strs[strtype] = _ffi.string(data).decode('utf-8', 'replace')
         return strs
     
-    def _set_bitrate_mode(self, bitrate_mode):
+    def _set_bitrate_mode(self, bitrate_mode: BitrateMode) -> None:
         """Call libsndfile's set bitrate mode function."""
         assert bitrate_mode in _bitrate_modes
 
@@ -1461,7 +1495,7 @@ class SoundFile(object):
             raise LibsndfileError(err, f"Error set bitrate mode {bitrate_mode}")
 
         
-    def _set_compression_level(self, compression_level):
+    def _set_compression_level(self, compression_level: float) -> None:
         """Call libsndfile's set compression level function."""
         if not (0 <= compression_level <= 1):
             raise ValueError("Compression level must be in range [0..1]")
@@ -1474,13 +1508,13 @@ class SoundFile(object):
             raise LibsndfileError(err, f"Error set compression level {compression_level}")
 
 
-def _error_check(err, prefix=""):
+def _error_check(err: int, prefix: str = "") -> None:
     """Raise LibsndfileError if there is an error."""
     if err != 0:
         raise LibsndfileError(err, prefix=prefix)
 
 
-def _format_int(format, subtype, endian):
+def _format_int(format: Format, subtype: Optional[SubType], endian: Optional[Endian]) -> int:
     """Return numeric ID for given format|subtype|endian combo."""
     result = _check_format(format)
     if subtype is None:
@@ -1488,18 +1522,14 @@ def _format_int(format, subtype, endian):
         if subtype is None:
             raise TypeError(
                 "No default subtype for major format {0!r}".format(format))
-    elif not isinstance(subtype, (_unicode, str)):
-        raise TypeError("Invalid subtype: {0!r}".format(subtype))
     try:
-        result |= _subtypes[subtype.upper()]
+        result |= _subtypes[subtype]
     except KeyError:
         raise ValueError("Unknown subtype: {0!r}".format(subtype))
     if endian is None:
         endian = 'FILE'
-    elif not isinstance(endian, (_unicode, str)):
-        raise TypeError("Invalid endian-ness: {0!r}".format(endian))
     try:
-        result |= _endians[endian.upper()]
+        result |= _endians[endian]
     except KeyError:
         raise ValueError("Unknown endian-ness: {0!r}".format(endian))
 
@@ -1512,10 +1542,8 @@ def _format_int(format, subtype, endian):
     return result
 
 
-def _check_mode(mode):
+def _check_mode(mode: str) -> int:
     """Check if mode is valid and return its integer representation."""
-    if not isinstance(mode, (_unicode, str)):
-        raise TypeError("Invalid mode: {0!r}".format(mode))
     mode_set = set(mode)
     if mode_set.difference('xrwb+') or len(mode) > len(mode_set):
         raise ValueError("Invalid mode: {0!r}".format(mode))
@@ -1531,18 +1559,20 @@ def _check_mode(mode):
     return mode_int
 
 
-def _create_info_struct(file, mode, samplerate, channels,
-                        format, subtype, endian):
+def _create_info_struct(file: FileDescriptorOrPath, mode: OpenMode, 
+                        samplerate: Optional[int], channels: Optional[int],
+                        format: Optional[Format], subtype: Optional[SubType], 
+                        endian: Optional[Endian]) -> Any:
     """Check arguments and create SF_INFO struct."""
     original_format = format
     if format is None:
         format = _get_format_from_filename(file, mode)
-        assert isinstance(format, (_unicode, str))
+        assert isinstance(format, str)
     else:
-        _check_format(format)
+        format = _ensure_format(format)
 
     info = _ffi.new("SF_INFO*")
-    if 'r' not in mode or format.upper() == 'RAW':
+    if 'r' not in mode or format== 'RAW':
         if samplerate is None:
             raise TypeError("samplerate must be specified")
         info.samplerate = samplerate
@@ -1558,7 +1588,7 @@ def _create_info_struct(file, mode, samplerate, channels,
     return info
 
 
-def _get_format_from_filename(file, mode):
+def _get_format_from_filename(file: Any, mode: OpenMode) -> Format:
     """Return a format string obtained from file (or file.name).
 
     If file already exists (= read mode), an empty string is returned on
@@ -1579,12 +1609,12 @@ def _get_format_from_filename(file, mode):
     if format.upper() not in _formats and 'r' not in mode:
         raise TypeError("No format specified and unable to get format from "
                         "file extension: {0!r}".format(file))
-    return format
+    return _ensure_format(format)
 
 
-def _format_str(format_int):
+def _format_str(format_int: int) -> str:
     """Return the string representation of a given numeric format."""
-    for dictionary in _formats, _subtypes, _endians:
+    for dictionary in (_formats, _subtypes, _endians):
         for k, v in dictionary.items():
             if v == format_int:
                 return k
@@ -1592,7 +1622,7 @@ def _format_str(format_int):
         return 'n/a'
 
 
-def _format_info(format_int, format_flag=_snd.SFC_GET_FORMAT_INFO):
+def _format_info(format_int: int, format_flag: int = _snd.SFC_GET_FORMAT_INFO) -> Tuple[str, str]:
     """Return the ID and short description of a given format."""
     format_info = _ffi.new("SF_FORMAT_INFO*")
     format_info.format = format_int
@@ -1603,7 +1633,7 @@ def _format_info(format_int, format_flag=_snd.SFC_GET_FORMAT_INFO):
             _ffi.string(name).decode('utf-8', 'replace') if name else "")
 
 
-def _available_formats_helper(count_flag, format_flag):
+def _available_formats_helper(count_flag: int, format_flag: int) -> Iterator[Tuple[str, str]]:
     """Helper for available_formats() and available_subtypes()."""
     count = _ffi.new("int*")
     _snd.sf_command(_ffi.NULL, count_flag, count, _ffi.sizeof("int"))
@@ -1611,18 +1641,20 @@ def _available_formats_helper(count_flag, format_flag):
         yield _format_info(format_int, format_flag)
 
 
-def _check_format(format_str):
+def _ensure_format(format_str: str) -> Format:
+    """Check if format_str is a valid Format and return it."""
+    format_str = format_str.upper()
+    if format_str in _formats:
+        return format_str
+    raise ValueError("Unknown format: {0!r}".format(format_str))
+
+
+def _check_format(format_str: Union[str, Format]) -> int:
     """Check if `format_str` is valid and return format ID."""
-    if not isinstance(format_str, (_unicode, str)):
-        raise TypeError("Invalid format: {0!r}".format(format_str))
-    try:
-        format_int = _formats[format_str.upper()]
-    except KeyError:
-        raise ValueError("Unknown format: {0!r}".format(format_str))
-    return format_int
+    return _formats[_ensure_format(format_str)]
 
 
-def _has_virtual_io_attrs(file, mode_int):
+def _has_virtual_io_attrs(file: Any, mode_int: int) -> bool:
     """Check if file has all the necessary attributes for virtual IO."""
     readonly = mode_int == _snd.SFM_READ
     writeonly = mode_int == _snd.SFM_WRITE
@@ -1653,13 +1685,13 @@ class LibsndfileError(SoundFileRuntimeError):
     code
         libsndfile internal error number.
     """
-    def __init__(self, code, prefix=""):
+    def __init__(self, code: int, prefix: str = "") -> None:
         SoundFileRuntimeError.__init__(self, code, prefix)
         self.code = code
         self.prefix = prefix
 
     @property
-    def error_string(self):
+    def error_string(self) -> str:
         """Raw libsndfile error message."""
         if self.code:
             err_str = _snd.sf_error_number(self.code)
@@ -1670,5 +1702,5 @@ class LibsndfileError(SoundFileRuntimeError):
             # See https://github.com/erikd/libsndfile/issues/610 for details.
             return "(Garbled error message from libsndfile)"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.prefix + self.error_string

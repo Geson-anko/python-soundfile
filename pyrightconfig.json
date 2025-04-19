@@ -1,0 +1,12 @@
+{
+    "pythonVersion": "3.9",
+    "exclude": [
+      "**/node_modules",
+      "**/__pycache__",
+      "**/.venv",
+      "tests/"
+    ],
+    "strict": ["soundfile.py"],
+    "reportMissingTypeStubs": false,
+    "reportPrivateUsage": "none",
+  }
